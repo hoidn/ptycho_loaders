@@ -1,4 +1,4 @@
-from typing import NamedTuple, Tuple, Optional, Union
+from typing import NamedTuple, Tuple, Optional
 
 class Config(NamedTuple):
     # File paths (non-default fields)
@@ -11,6 +11,7 @@ class Config(NamedTuple):
     pixel_size: float  # in meters
 
     # Probe processing parameters (with default values)
+    initial_shape: int = 512
     probe_target_shape: Tuple[int, int] = (64, 64)
     probe_strategy: str = 'hybrid'
     probe_bin_factor: int = 2
@@ -20,24 +21,6 @@ class Config(NamedTuple):
 
     # Diffraction processing parameters (with default values)
     diffraction_normalization_strategy: Optional[str] = 'mean'
-
-    @property
-    def diffraction_crop_factor(self) -> int:
-        return self.probe_bin_factor if self.probe_strategy != 'crop' else 1
-
-    @property
-    def diffraction_bin_factor(self) -> int:
-        original_probe_shape = (512, 512)  # Assuming original probe shape is 512x512
-        if self.probe_strategy == 'crop':
-            return original_probe_shape[0] // self.probe_target_shape[0]
-        else:
-            return original_probe_shape[0] // (self.probe_target_shape[0] * self.diffraction_crop_factor)
-
-    @property
-    def diffraction_crop_shape(self) -> Tuple[int, int, int]:
-        original_diff_shape = (512, 512, 512)  # Assuming original diffraction shape
-        crop_size = original_diff_shape[0] // self.diffraction_crop_factor
-        return (crop_size, crop_size, crop_size)
 
 # Class constant (not a NamedTuple field)
 Config.DEFAULT_PROBE_SCALE = 1.0
@@ -85,9 +68,6 @@ def validate_config(config: Config) -> None:
     """
     if config.probe_bin_factor < 1:
         raise ValueError("probe_bin_factor must be 1 or greater")
-    
-    if config.diffraction_bin_factor < 1:
-        raise ValueError("diffraction_bin_factor must be 1 or greater")
     
     if config.probe_strategy not in ['crop', 'bin', 'hybrid']:
         raise ValueError("probe_strategy must be 'crop', 'bin', or 'hybrid'")

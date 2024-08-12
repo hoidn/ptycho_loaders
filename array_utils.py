@@ -10,42 +10,63 @@ def _check_shapes_match(arr1: NDArray, arr2: NDArray) -> None:
     if arr1.shape != arr2.shape:
         raise ValueError("Input arrays must have the same shape.")
 
+import numpy as np
+from typing import Tuple, Union
+from numpy.typing import NDArray
+
 def crop_array(arr: NDArray, target_shape: Tuple[int, ...], shift: Union[Tuple[int, ...], None] = None) -> NDArray:
     """
-    Crops the center of an array to the target shape. Works with arrays of any dimension.
+    Crop the center of a N-dimensional array to the target shape, with optional shifting.
+    Args:
+        arr (NDArray): Input N-dimensional array.
+        target_shape (Tuple[int, ...]): Desired output shape.
+        shift (Union[Tuple[int, ...], None]): Tuple specifying the number of pixels to shift the crop region along each dimension (positive values shift down/right). If None, no shifting is applied.
+    Returns:
+        NDArray: Cropped array.
+    Raises:
+        ValueError: If the dimensions of shift do not match the dimensions of arr, or if the shifted crop region is outside the bounds of the input array.
     """
-    if len(target_shape) != arr.ndim:
-        raise ValueError("Target shape must have the same number of dimensions as the input array.")
+    if shift is None:
+        shift = tuple(0 for _ in range(arr.ndim))
+    elif len(shift) != arr.ndim:
+        raise ValueError(f"The dimensions of shift ({len(shift)}) do not match the dimensions of arr ({arr.ndim}).")
     
-    if any(t > s for t, s in zip(target_shape, arr.shape)):
-        raise ValueError("Target shape cannot be larger than the input array shape in any dimension.")
+    slices = []
+    # Determine if we're dealing with a 3D array to apply cropping to the last two dimensions
+    start_dim = arr.ndim - 2 if arr.ndim == 3 else 0
     
-    shift = shift or (0,) * arr.ndim
+    for dim in range(start_dim, arr.ndim):
+        start = (arr.shape[dim] - target_shape[dim]) // 2 + shift[dim]
+        if start < 0 or start + target_shape[dim] > arr.shape[dim]:
+            raise ValueError(f"Shifted crop region is outside the bounds of the input array along dimension {dim}.")
+        slices.append(slice(start, start + target_shape[dim]))
     
-    if len(shift) != arr.ndim:
-        raise ValueError("Shift must have the same number of dimensions as the input array.")
+    # Include any untouched dimensions from the beginning
+    slices = [slice(None)] * start_dim + slices
     
-    starts = [max(0, (s - t) // 2 + sh) for s, t, sh in zip(arr.shape, target_shape, shift)]
-    ends = [min(s, start + t) for s, start, t in zip(arr.shape, starts, target_shape)]
-    
-    slices = tuple(slice(s, e) for s, e in zip(starts, ends))
-    return arr[slices]
+    return arr[tuple(slices)]
 
-def bin_array(arr: NDArray, bin_factor: int) -> NDArray:
+import numpy as np
+
+def bin_array(arr: np.ndarray, bin_factor: int) -> np.ndarray:
     """
-    Bins an array by averaging neighboring elements. Works with arrays of any dimension.
+    Bin a 2D or 3D array by averaging neighboring elements. If 3D, binning is applied to the last two dimensions.
+
+    Args:
+        arr (np.ndarray): Input 2D or 3D array.
+        bin_factor (int): Binning factor.
+
+    Returns:
+        np.ndarray: Binned array.
     """
-    if bin_factor < 1:
-        raise ValueError("Bin factor must be a positive integer.")
-    
-    if bin_factor == 1:
-        return arr
-    
-    if any(s % bin_factor != 0 for s in arr.shape):
-        raise ValueError("All array dimensions must be divisible by the bin factor.")
-    
-    new_shape = tuple(s // bin_factor for s in arr.shape) + (bin_factor,) * arr.ndim
-    return arr.reshape(new_shape).mean(axis=tuple(range(arr.ndim, 2*arr.ndim)))
+    if arr.ndim == 2:
+        shape = (arr.shape[0] // bin_factor, arr.shape[1] // bin_factor)
+        return arr.reshape(shape[0], bin_factor, shape[1], bin_factor).mean(axis=(1, 3))
+    elif arr.ndim == 3:
+        shape = (arr.shape[0], arr.shape[1] // bin_factor, arr.shape[2] // bin_factor)
+        return arr.reshape(shape[0], shape[1], bin_factor, shape[2], bin_factor).mean(axis=(2, 4))
+    else:
+        raise ValueError("Input array must be 2D or 3D.")
 
 def normalize_array(arr: NDArray, method: str = 'mean', axis: Union[int, Tuple[int, ...], None] = None) -> NDArray:
     """

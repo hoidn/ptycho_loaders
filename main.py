@@ -12,7 +12,6 @@ def main():
     parser.add_argument('input_file', help="Path to the input CXI file")
     parser.add_argument('output_file', help="Path to save the output NPY file")
     parser.add_argument('--probe-bin-factor', type=int, help="Override probe bin factor")
-    parser.add_argument('--diffraction-bin-factor', type=int, help="Override diffraction bin factor")
     args = parser.parse_args()
 
     try:
@@ -21,8 +20,6 @@ def main():
         
         if args.probe_bin_factor is not None:
             config = config._replace(probe_bin_factor=args.probe_bin_factor)
-        if args.diffraction_bin_factor is not None:
-            config = config._replace(diffraction_bin_factor=args.diffraction_bin_factor)
 
         pipeline = create_processing_pipeline(config)
         result = pipeline(config.input_file)

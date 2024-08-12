@@ -28,11 +28,19 @@ def create_processing_pipeline(config: Config) -> Callable[[str], Dict[str, Any]
         scan_index = loader['load_scan_index'](input_file)
         object_guess = loader['load_object_guess'](input_file)
 
+        # Calculate diffraction crop_factor and bin_factor based on probe parameters
+        if config.probe_strategy == 'crop':
+            bin_factor = config.initial_shape // config.probe_target_shape
+            crop_factor = 1
+        else:
+            crop_factor = config.probe_bin_factor
+            bin_factor = config.initial_shape // (config.probe_target_shape[0] * crop_factor)
+
         # Process data
         logger.info("Processing probe data...")
         processed_probe = process_probe(probe_data, config)
         logger.info("Processing diffraction data...")
-        processed_diff3d = process_diffraction(diff3d, config)
+        processed_diff3d = process_diffraction(diff3d, config, crop_factor, bin_factor)
 
         logger.info("Pipeline processing complete")
         return {
