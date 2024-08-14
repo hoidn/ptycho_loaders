@@ -6,15 +6,18 @@ import numpy as np
 from scipy import io
 import matplotlib.pyplot as plt
 import h5py
+# import numpy.fft as fft
 import cupy as cp
 import cupy.fft as fft
 import cupyx.scipy.ndimage as ndimage
 import cupyx.scipy.signal as signal
 import tables
 
-# Credit for this class and the ePIE implementation in it: Matt Seaberg
+# ptychography reconstruction class
 class Ptycho:
+
     def __init__(self, datafile, metadata={}, plots=None, probe=None, mask=None, atten_area=None, use_probe=False):
+
         # check file type
         if datafile[-2:] == 'h5':
             # load in data, etc
@@ -22,16 +25,12 @@ class Ptycho:
             # ipm2 is used for filtering and normalizing the data
             ipm2 = dat.ipm2.sum.read()
             # diffraction images (intensity, not amplitude)
-            ims = dat.jungfrau1M.image_img#.ROI_0_area
-            #ims = dat.jungfrau1M.ROI_0_area
+            ims = dat.jungfrau1M.ROI_0_area
 
             # piezo stage positions are in microns
             pi_x = dat.lmc.ch03.read()
             pi_y = dat.lmc.ch04.read()
             pi_z = dat.lmc.ch05.read()
-
-            # Find indices where any of pi_x, pi_y, or pi_z is NaN
-            #nan_indices = cp.isnan(pi_x) | cp.isnan(pi_y) | cp.isnan(pi_z)
             
             # vertical coordinate is always pi_z
             ycoords = -pi_z*1e-6
@@ -40,10 +39,10 @@ class Ptycho:
                 angle = metadata['angle']
             else:
                 angle = 0
-
+                
             # horizontal coordinate may be a combination of pi_x and pi_y
             xcoords = (np.cos(np.radians(angle)) * pi_x + np.sin(np.radians(angle)) * pi_y) * 1e-6
-
+            
             low_thresh = metadata['low_thresh']
             high_thresh = metadata['high_thresh']
             center_x = metadata['center_x']
@@ -53,13 +52,23 @@ class Ptycho:
             self.z = metadata['z']
             self.lambda0 = metadata['lambda0']
             im_thresh = metadata['im_thresh']
-
+            
+            
+            
+            # with h5py.File(metadatafile) as f:
+            #     low_thresh = f['low_thresh'][()]
+            #     high_thresh = f['high_thresh'][()]
+            #     center_x = f['center_x'][()]
+            #     center_y = f['center_y'][()]
+            #     width = f['width_x'][()]
+            #     pD = f['pD'][()]
+            #     self.z = f['z'][()]
+            #     self.lambda0 = f['lambda0'][()]
+            # P,N,M = ims.shape
             N = int(center_y+width/2) - int(center_y-width/2)
 
             ipm_mask = np.logical_and.reduce((ipm2>low_thresh,ipm2<high_thresh,np.logical_not(np.isnan(xcoords)),
                                           np.logical_not(np.isnan(ycoords))))
-#            ipm_mask = cp.asarray(np.logical_and.reduce((ipm2>low_thresh,ipm2<high_thresh,np.logical_not(np.isnan(xcoords)),
-#                                          np.logical_not(np.isnan(ycoords)))) & (~nan_indices))
             diffraction = cp.zeros((N,N,int(cp.sum(ipm_mask))))
             for num, i in enumerate(ipm_mask.nonzero()[0]):
                 diffraction[:,:,num] = cp.asarray(np.array(ims[i,int(center_y-width/2):int(center_y+width/2),
@@ -84,6 +93,23 @@ class Ptycho:
             self.bin = 1
             self.probeGuess = probe
 
+
+        #     with h5py.File(datafile) as f:
+        #         ims =
+        #         self.diffraction = cp.asarray(f['diffraction'])
+        #         xcoords = cp.asarray(f['xGrid'])
+        #         ycoords = cp.asarray(f['yGrid'])
+        #         self.pD = cp.asarray(f['pD'])
+        #         self.z = cp.asarray(f['z']).reshape(1)
+        #         self.bin = 1
+        #         self.lambda0 = cp.asarray(f['lambda0']).reshape(1)
+        #         self.probeGuess = probe
+        #         if self.probeGuess is None and use_probe==True:
+        #             self.probeGuess = cp.asarray(f['probes'])
+        #         if f['pD'] is None:
+        #             pD = 75e-6
+        #         else:
+        #             pD = cp.asarray(f['pD']).reshape(1)
         elif datafile[-3:] == 'mat':
             data = io.loadmat(datafile)
             self.diffraction = cp.asarray(data['diffraction'])
@@ -102,6 +128,8 @@ class Ptycho:
         else:
             print('incorrect data type')
             return None
+        # self.probeGuess = None
+
 
         self.pD = pD*self.bin
 
@@ -136,6 +164,7 @@ class Ptycho:
         diff_sums = cp.sum(self.diffraction**2,axis=(0,1))
 
         # normalize probe guess to diffraction pattern
+        # self.probeGuess = self.probeGuess/np.sqrt(np.sum(np.abs(self.probeGuess)**2)/np.sum(np.mean(self.diffraction,axis=2)**2))
         self.probeGuess = self.probeGuess / cp.sqrt(
             cp.sum(cp.abs(self.probeGuess) ** 2) / cp.mean(diff_sums))
 
@@ -172,6 +201,9 @@ class Ptycho:
         self.xcoords1 = cp.copy(self.xcoords)
         self.ycoords1 = cp.copy(self.ycoords)
 
+        # take square root of diffraction pattern
+        # self.diffraction = np.sqrt(self.diffraction)
+
         # initialize arrays for position correction correlations
         self.shiftXOld = cp.zeros(self.P)
         self.shiftYOld = cp.zeros(self.P)
@@ -203,15 +235,21 @@ class Ptycho:
 
         self.inverseMask = cp.invert(self.mask)
 
+#         self.diffraction = self.diffraction*(cp.tile(cp.reshape(self.mask,(self.M,self.N,1)),(1,1,self.P)))
+
         self.psi = cp.zeros_like(self.probeGuess)
 
     def reset_object(self):
+
         self.objectGuess = cp.ones(self.objectGuess.shape, dtype=complex)
 
     def reset_probe(self):
+
         self.probeGuess = cp.copy(self.initial_probe)
 
+    # single ePIE step (at one position)
     def ptychography_step(self,index):
+
         amplitude = self.diffraction[:,:,index]
 
         # corner of subgrid to remove from object
@@ -231,9 +269,14 @@ class Ptycho:
 
         # define subpixel linear phase shift
         shiftPhase = cp.exp(-1j*2*np.pi*(xSub*self.x1/self.M + ySub*self.y1/self.N))
-
+        # x1 = np.linspace(-5, 5, 11)
+        # x1, y1 = np.meshgrid(x1, x1)
+        # filter = np.sinc(x1 - xSub) * np.sinc(y1 - ySub) * np.sinc(x1 / 5) * np.sinc(y1 / 5)
+        #
+        # probeSubShift = ndimage.convolve(self.probeGuess, filter)
         # subpixel shift probe
         probeSubShift = Ptycho.infft(Ptycho.nfft(self.probeGuess)*shiftPhase)
+        # probeSubShift = self.probeGuess
 
         # multiply shifted probe with subobject to define psi
         subPsi = subObject*probeSubShift
@@ -273,6 +316,7 @@ class Ptycho:
 
         # shift updated probe back
         probeGuess = Ptycho.infft(Ptycho.nfft(probeOutShifted)*cp.conj(shiftPhase))
+        # probeGuess = probeOutShifted
 
         # calculate next guess for coordinates
         # find probe threshold mask at 10%
@@ -327,6 +371,7 @@ class Ptycho:
             self.gamma *= 1.1
 
         return aveCorr
+
 
     def fullePIEstep(self, indexOrder):
 
