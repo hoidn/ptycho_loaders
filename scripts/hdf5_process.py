@@ -13,6 +13,19 @@ import cupyx.scipy.ndimage as ndimage
 import cupyx.scipy.signal as signal
 import tables
 
+# Define the reconstruction recipe
+recipe = {
+    'N': 30,
+    'pc_on': -1,
+    'pc_off': -1,
+    'probe_on': 0,
+    'probe_off': -1,
+    'gamma': 50.0,
+    'alpha': 1.0,
+    'beta': 1.0,
+    'reset_object': [10, 20]
+}
+
 # ptychography reconstruction class
 class Ptycho:
 
@@ -578,6 +591,7 @@ class Ptycho:
 
         return shift
 
+ 
 def main():
     parser = argparse.ArgumentParser(description='xpp ptychography data loading and probe reconstruction script')
     
@@ -588,8 +602,8 @@ def main():
     # Optional arguments  
     parser.add_argument('-m', '--mode', type=str, choices=['load_only', 'load_recon'], default='load_only',
                         help='Script mode: "load_only" (default) or "load_recon"')
-    parser.add_argument('-w', '--width', type=int, choices=[64, 128], default=64, 
-                        help='Width parameter (default: 64)')
+    parser.add_argument('-w', '--width', type=int, choices=[64, 128], default=128, 
+                        help='Width parameter (default: 128)')
     parser.add_argument('-o', '--output_prefix', type=str, default='ptycho_output',
                         help='Output file prefix (default: "ptycho_output")')
     parser.add_argument('-c', '--config', type=str, default=None,
@@ -655,18 +669,6 @@ def main():
         
     elif args.mode == 'load_recon':
         # Run reconstruction with specified recipe
-        recipe = {
-            'N': args.iterations,
-            'pc_on': args.pc_on,  
-            'pc_off': args.pc_off,
-            'probe_on': args.probe_on,
-            'probe_off': args.probe_off,  
-            'gamma': args.gamma,
-            'alpha': args.alpha,
-            'beta': args.beta,
-            'reset_object': args.reset_object
-        }
-        
         res = obj.run_iterations(recipe, status=True)
         
         # Save specified arrays and reconstruction results to NPZ file  
@@ -679,7 +681,7 @@ def main():
                  xcoords_start=cp.asnumpy(obj.xcoords1),
                  ycoords_start=cp.asnumpy(obj.ycoords1))
                  
-    print(f'Output saved to {output_file}')
-        
+    print(f'Output saved to {output_file}') 
+
 if __name__ == '__main__':
     main()
